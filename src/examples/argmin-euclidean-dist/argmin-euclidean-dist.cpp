@@ -22,7 +22,7 @@
 //ABY Party class
 #include "../../abycore/aby/abyparty.h"
 
-#include "common/min-euclidean-dist-circuit.h"
+#include "common/argmin-euclidean-dist-circuit.h"
 
 int32_t read_test_options(int32_t* argcp, char*** argvp, e_role* role, uint32_t* bitlen, uint32_t* nvals, uint32_t* dim, uint32_t* secparam, string* address, uint16_t* port, int32_t* test_op, ePreCompPhase* pre_comp_value) {
 
@@ -69,7 +69,7 @@ int main(int argc, char** argv) {
 
 	seclvl seclvl = get_sec_lvl(secparam);
 
-	test_min_eucliden_dist_circuit(role, (char*) address.c_str(), seclvl, nvals, dim, nthreads, mt_alg, S_ARITH, S_BOOL, precomp_phase_value);
+	test_argmin_eucliden_dist_circuit(role, (char*) address.c_str(), seclvl, nvals, dim, nthreads, mt_alg, S_ARITH, S_BOOL, precomp_phase_value);
 
 	return 0;
 }

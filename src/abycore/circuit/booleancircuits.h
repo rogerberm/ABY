@@ -338,6 +338,8 @@ public:
 	share* PutMinGate(share** a, uint32_t nvals);
 	vector<uint32_t> PutMinGate(vector<vector<uint32_t> > a);
 
+	share* PutArgminGate(share** a, share** b, uint32_t nvals);
+	vector<uint32_t> PutArgminGate(vector<vector<uint32_t> > a, vector<vector<uint32_t>> b);
 	/**
 	 * \brief Floating point gate with one input
 	 * \param inputs input wire IDs

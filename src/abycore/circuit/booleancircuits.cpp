@@ -2142,6 +2142,56 @@ vector<uint32_t> BooleanCircuit::PutMinGate(vector<vector<uint32_t> > a) {
 	return m_vELMs[0];
 }
 
+// Argmin
+share* BooleanCircuit::PutArgminGate(share** a, share** b, uint32_t nvals) {
+	vector<vector<uint32_t> > min(nvals);
+	vector<vector<uint32_t> > idx(nvals);
+	uint32_t i;
+	for (i = 0; i < nvals; i++) {
+		min[i] = a[i]->get_wires();
+		idx[i] = b[i]->get_wires();
+	}
+	return new boolshare(PutArgminGate(min, idx), this);
+}
+
+
+vector<uint32_t> BooleanCircuit::PutArgminGate(vector<vector<uint32_t> > a, vector<vector<uint32_t>> b) {
+	// build a balanced binary tree
+	uint32_t cmp;
+	uint32_t avec, bvec;
+	vector<vector<uint32_t> > m_vELMs = a;
+	vector<vector<uint32_t> > m_vIDXs = b;
+
+	while (m_vELMs.size() > 1) {
+		unsigned j = 0;
+		for (unsigned i = 0; i < m_vELMs.size();) {
+			if (i + 1 >= m_vELMs.size()) {
+				m_vELMs[j] = m_vELMs[i];
+				m_vIDXs[j] = m_vIDXs[i];
+				i++;
+				j++;
+			} else {
+				//	cmp = bc->PutGTTree(m_vELMs[i], m_vELMs[i+1]);
+				if (m_eContext == S_YAO) {
+					cmp = PutSizeOptimizedGTGate(m_vELMs[i], m_vELMs[i + 1]);
+					m_vELMs[j] = PutMUXGate(m_vELMs[i + 1], m_vELMs[i], cmp);
+					m_vIDXs[j] = PutMUXGate(m_vIDXs[i + 1], m_vIDXs[i], cmp);
+				} else {
+					cmp = PutDepthOptimizedGTGate(m_vELMs[i], m_vELMs[i + 1]);
+					m_vELMs[j] = PutMUXGate(m_vELMs[i + 1], m_vELMs[i], cmp);
+					m_vIDXs[j] = PutMUXGate(m_vIDXs[i + 1], m_vIDXs[i], cmp);
+				}
+
+				i += 2;
+				j++;
+			}
+		}
+		m_vELMs.resize(j);
+		m_vIDXs.resize(j);
+	}
+	return m_vIDXs[0];
+}
+
 
 
 // vals = values, ids = indicies of each value, n = size of vals and ids

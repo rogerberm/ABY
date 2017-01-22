@@ -15,9 +15,9 @@
 			along with this program. If not, see <http://www.gnu.org/licenses/>.
  \brief		Implementation of Minimum Euclidean Distance Circuit
  */
-#include "min-euclidean-dist-circuit.h"
+#include "argmin-euclidean-dist-circuit.h"
 
-int32_t test_min_eucliden_dist_circuit(e_role role, char* address, seclvl seclvl, uint32_t dbsize,
+int32_t test_argmin_eucliden_dist_circuit(e_role role, char* address, seclvl seclvl, uint32_t dbsize,
 		uint32_t dim, uint32_t nthreads, e_mt_gen_alg mt_alg, e_sharing dstsharing, e_sharing minsharing, ePreCompPhase pre_comp_value) {
 	uint32_t bitlen = 8, i, j, temp, tempsum, maxbitlen=32;
 	uint64_t output;
@@ -88,7 +88,7 @@ int32_t test_min_eucliden_dist_circuit(e_role role, char* address, seclvl seclvl
 	Csqr = mincirc->PutINGate(tempsum, 2*bitlen+ceil_log2(dim), CLIENT);
 
 
-	mindst = build_min_euclidean_dist_circuit(Sshr, Cshr, dbsize, dim, Ssqr, Csqr, distcirc, (BooleanCircuit*) mincirc, sharings, minsharing);
+	mindst = build_argmin_euclidean_dist_circuit(Sshr, Cshr, dbsize, dim, Ssqr, Csqr, distcirc, (BooleanCircuit*) mincirc, sharings, minsharing);
 
 	mindst = mincirc->PutOUTGate(mindst, ALL);
 
@@ -107,7 +107,7 @@ int32_t test_min_eucliden_dist_circuit(e_role role, char* address, seclvl seclvl
 			get_sharing_name(minsharing) << " sharing: " << endl;
 
 		cout << "Circuit result = " << output << endl;
-		verify = verify_min_euclidean_dist(serverdb, clientquery, dbsize, dim);
+		verify = verify_argmin_euclidean_dist(serverdb, clientquery, dbsize, dim);
 		cout << "Verification result = " << verify << endl;
 	}
 	//PrintTimings();
@@ -129,18 +129,20 @@ int32_t test_min_eucliden_dist_circuit(e_role role, char* address, seclvl seclvl
 }
 
 //Build_
-share* build_min_euclidean_dist_circuit(share*** S, share** C, uint32_t n, uint32_t d, share** Ssqr, share* Csqr,
+share* build_argmin_euclidean_dist_circuit(share*** S, share** C, uint32_t n, uint32_t d, share** Ssqr, share* Csqr,
 		Circuit* distcirc, BooleanCircuit* mincirc, vector<Sharing*>& sharings, e_sharing minsharing) {
-	share **distance, *temp, *mindist;
+	share **distance, **indices, *temp, *argmindist;
 	uint32_t i, j;
 
 	Circuit *yaocirc = sharings[S_YAO]->GetCircuitBuildRoutine();
 
 	distance = (share**) malloc(sizeof(share*) * n);
+	indices = (share**) malloc(sizeof(share*) * n);
 	assert(mincirc->GetCircuitType() == C_BOOLEAN);
 
 	for (i=0; i < n; i++) {
 		distance[i] = distcirc->PutMULGate(S[i][0], C[0]);
+		indices[i] = mincirc->PutINGate(i, 32, CLIENT);
 		for (j=1; j < d; j++) {
 			temp = distcirc->PutMULGate(S[i][j], C[j]);
 			distance[i] = distcirc->PutADDGate(distance[i], temp);
@@ -156,12 +158,12 @@ share* build_min_euclidean_dist_circuit(share*** S, share** C, uint32_t n, uint3
 		distance[i] = mincirc->PutSUBGate(temp, distance[i]);
 	}
   
-	mindist = mincirc->PutMinGate(distance, n);
+	argmindist = mincirc->PutArgminGate(distance, indices, n);
 	free(distance);
-	return mindist;
+	return argmindist;
 }
 
-uint64_t verify_min_euclidean_dist(uint32_t** serverdb, uint32_t* clientquery, uint32_t dbsize, uint32_t dim) {
+uint64_t verify_argmin_euclidean_dist(uint32_t** serverdb, uint32_t* clientquery, uint32_t dbsize, uint32_t dim) {
 	uint32_t i, j;
 	uint64_t mindist, tmpdist;
 
