@@ -15,7 +15,86 @@
 			along with this program. If not, see <http://www.gnu.org/licenses/>.
  \brief		Implementation of Minimum Euclidean Distance Circuit
  */
-#include "argmin_client.h"
+#include "argmin_python_client.h"
+
+uint32_t* get_db_size() {
+    uint32_t* db_size = (uint32_t*) malloc(2 * sizeof(uint32_t));
+    db_size[0] = 50;
+    db_size[1] = 3;
+    return db_size;
+}
+
+int32_t argmin(uint32_t* query) {
+	uint32_t bitlen = 8, i, j, temp, tempsum, maxbitlen=32, secparam=128, nthreads=1;
+	e_mt_gen_alg mt_alg = MT_OT;
+    string address = "127.0.0.1";
+
+    seclvl seclvl = get_sec_lvl(secparam);
+
+	ABYParty* party = new ABYParty(CLIENT, (char*) address.c_str(), seclvl, maxbitlen, nthreads, mt_alg);
+	vector<Sharing*>& sharings = party->GetSharings();
+    uint32_t int_precomp = 0;
+	ePreCompPhase precomp_phase_value = (ePreCompPhase) int_precomp;
+	sharings[S_BOOL]->SetPreCompPhaseValue(precomp_phase_value);
+
+	crypto* crypt = new crypto(seclvl.symbits, (uint8_t*) const_seed);
+	uint32_t **serverdb, *clientquery;
+	uint64_t verify;
+
+	Circuit *distcirc, *mincirc;
+	
+	share ***Sshr, **Cshr, **Ssqr, *Csqr, *mindst;
+
+	//set server input
+    uint32_t* dbsize = get_db_size();
+    uint32_t N=dbsize[0], dim=dbsize[1];
+    free(dbsize);
+	Sshr = (share***) malloc(sizeof(share**) * N);
+	for (i = 0; i < N; i++) {
+		Sshr[i] = (share**) malloc(sizeof(share*) * dim);
+		for (j = 0; j < dim; j++) {
+			Sshr[i][j] = distcirc->PutINGate((uint32_t) 0, bitlen, SERVER);
+		}
+	}
+
+	Ssqr = (share**) malloc(sizeof(share*) * N);
+	for (i = 0; i < N; i++) {
+		Ssqr[i] = mincirc->PutINGate((uint32_t) 0, 2*bitlen+ceil_log2(dim), SERVER);
+	}
+
+	//set client input
+	Cshr = (share**) malloc(sizeof(share*) * dim);
+	tempsum = 0;
+	for (j = 0; j < dim; j++) {
+		temp = query[j];
+		Cshr[j] = distcirc->PutINGate(2*temp, bitlen+1, CLIENT);
+		tempsum += (temp * temp);
+	}
+	Csqr = mincirc->PutINGate(tempsum, 2*bitlen+ceil_log2(dim), CLIENT);
+
+	mindst = build_argmin_euclidean_dist_circuit(Sshr, Cshr, N, dim, Ssqr, Csqr, distcirc, (BooleanCircuit*) mincirc, sharings, S_BOOL);
+
+	mindst = mincirc->PutOUTGate(mindst, ALL);
+
+	party->ExecCircuit();
+
+    int32_t result = mindst->get_clear_value<uint64_t>();
+    
+	//TODO free
+	for(uint32_t i = 0; i < N; i++) {
+		free(serverdb[i]);
+		free(Sshr[i]);
+	}
+
+	free(serverdb);
+	free(Sshr);
+	free(Ssqr);
+
+	free(clientquery);
+	free(Cshr);
+
+    return result;
+}
 
 int32_t test_argmin_eucliden_dist_circuit(e_role role, char* address, seclvl seclvl, uint32_t dbsize,
 		uint32_t dim, uint32_t nthreads, e_mt_gen_alg mt_alg, e_sharing dstsharing, e_sharing minsharing, ePreCompPhase pre_comp_value) {
