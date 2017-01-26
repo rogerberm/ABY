@@ -50,7 +50,7 @@ setup(
 #"../../../abycore/util/miracl_lib/crt.cpp",
 #"../../../abycore/util/miracl_lib/flash.cpp",
             "_ABY.cpp",
-            ], libraries=['miracl','ssl','crypto','gmp','gmpxx','pthread'])],
+            ], libraries=['miracl','ssl','crypto','gmp','gmpxx','pthread','sqlite3'])],
     include_dirs=['/tmp/ABY/src/abycore/util/miracl_lib'] + numpy.distutils.misc_util.get_numpy_include_dirs(),
     library_dirs=['/tmp/ABY/src/abycore/util/miracl_lib'],
     data_files=[('/usr/local/lib','/tmp/ABY/src/abycore/util/miracl_lib/miracl.a', '/tmp/ABY/src/abycore/util/miracl_lib/*.o')],

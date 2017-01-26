@@ -73,6 +73,7 @@ int main(int argc, char** argv) {
     uint32_t* db_size = get_db_size();
     uint32_t N = db_size[0];
     uint32_t dims = db_size[1];
+    printf("db size is %d x %d\n", db_size[0], db_size[1]);
     uint32_t *query = (uint32_t*) malloc(sizeof(uint32_t) * dims);
 
     uint32_t output;

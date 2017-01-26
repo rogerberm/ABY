@@ -15,11 +15,12 @@
 			along with this program. If not, see <http://www.gnu.org/licenses/>.
  \brief		Implementation of Minimum Euclidean Distance Circuit
  */
-#include "argmin_python_client.h"
+#include "pripic_server.h"
 #include <sqlite3.h>
 
 const string DATABASE_PATH = "/tmp/test.db";
 const string GET_SIZE_QUERY = "select count(id) from facedata;";
+const string GET_TABLE_QUERY = "select * from facedata;";
 
 uint32_t* get_db_size() {
     uint32_t* db_size = (uint32_t*) malloc(2 * sizeof(uint32_t));
@@ -51,54 +52,114 @@ uint32_t* get_db_size() {
     return db_size;
 }
 
-int32_t argmin(uint32_t* query) {
+uint32_t** get_table() {
+    uint32_t *db_size = get_db_size();
+    uint32_t N = db_size[0], dim = db_size[1];
+    free(db_size);
+
+    sqlite3 *database;
+    sqlite3_stmt *statement;
+    int rc = sqlite3_open(DATABASE_PATH.c_str(), &database);
+    if (rc) {
+        fprintf(stderr, "Can't open database.\n");
+        sqlite3_free(database);
+        return NULL;
+    }
+    rc = sqlite3_prepare_v2(database, GET_TABLE_QUERY.c_str(), -1, &statement, 0);
+    if (rc != SQLITE_OK) {
+        fprintf(stderr, "Couldn't fetch data\n");
+        sqlite3_close(database);
+        return NULL;
+    }
+
+    uint32_t** serverdb = (uint32_t**) malloc(sizeof(uint32_t*) * N);
+    rc = sqlite3_step(statement);
+    int i=0;
+
+    while (rc == SQLITE_ROW) {
+        serverdb[i] = (uint32_t*) malloc(sizeof(uint32_t) * dim);
+        for(int j = 0; j < dim; j++) {
+            serverdb[i][j] = sqlite3_column_int(statement, j+1);
+            //serverdb[i][j] = rand() % ((uint64_t) 1 << bitlen);
+        }
+        i++;
+        rc = sqlite3_step(statement);
+    }
+    return serverdb;
+}
+
+int32_t serve_argmin() {
+    //query_db();
 	uint32_t bitlen = 8, i, j, temp, tempsum, maxbitlen=32, secparam=128, nthreads=1;
 	e_mt_gen_alg mt_alg = MT_OT;
     string address = "127.0.0.1";
 
     seclvl seclvl = get_sec_lvl(secparam);
 
-	ABYParty* party = new ABYParty(CLIENT, (char*) address.c_str(), seclvl, maxbitlen, nthreads, mt_alg);
+	ABYParty* party = new ABYParty(SERVER, (char*) address.c_str(), seclvl, maxbitlen, nthreads, mt_alg);
+    printf("* Client connected. ");
+    fflush(stdout);
 	vector<Sharing*>& sharings = party->GetSharings();
     uint32_t int_precomp = 0;
 	ePreCompPhase precomp_phase_value = (ePreCompPhase) int_precomp;
 	sharings[S_BOOL]->SetPreCompPhaseValue(precomp_phase_value);
 
 	crypto* crypt = new crypto(seclvl.symbits, (uint8_t*) const_seed);
+	uint32_t **serverdb;
 	uint64_t verify;
 
 	Circuit *distcirc, *mincirc;
 	
 	share ***Sshr, **Cshr, **Ssqr, *Csqr, *mindst;
 
-    distcirc = sharings[S_ARITH]->GetCircuitBuildRoutine();
-    mincirc = sharings[S_BOOL]->GetCircuitBuildRoutine();
-	//set server input
+	srand(time(NULL));
+
     uint32_t* dbsize = get_db_size();
     uint32_t N=dbsize[0], dim=dbsize[1];
-    //free(dbsize);
+    free(dbsize);
+	//generate dbsize * dim * bitlen random bits as server db
+    serverdb = get_table();
+    /*
+	serverdb = (uint32_t**) malloc(sizeof(uint32_t*) * N);
+	for(i = 0; i < N; i++) {
+		serverdb[i] = (uint32_t*) malloc(sizeof(uint32_t) * dim);
+		for(j = 0; j < dim; j++) {
+			serverdb[i][j] = rand() % ((uint64_t) 1 << bitlen);
+		}
+	}
+    */
+
+	distcirc = sharings[S_ARITH]->GetCircuitBuildRoutine();
+	mincirc = sharings[S_BOOL]->GetCircuitBuildRoutine();
+    
+	//set server input
 	Sshr = (share***) malloc(sizeof(share**) * N);
 	for (i = 0; i < N; i++) {
 		Sshr[i] = (share**) malloc(sizeof(share*) * dim);
 		for (j = 0; j < dim; j++) {
-			Sshr[i][j] = distcirc->PutINGate((uint32_t) 0, bitlen, SERVER);
+			Sshr[i][j] = distcirc->PutINGate(serverdb[i][j], bitlen, SERVER);
 		}
 	}
 
 	Ssqr = (share**) malloc(sizeof(share*) * N);
 	for (i = 0; i < N; i++) {
-		Ssqr[i] = mincirc->PutINGate((uint32_t) 0, 2*bitlen+ceil_log2(dim), SERVER);
+		tempsum = 0; 
+		for (j = 0; j < dim; j++) {
+			temp = serverdb[i][j];
+			tempsum += (temp * temp);
+		}
+		Ssqr[i] = mincirc->PutINGate(tempsum, 2*bitlen+ceil_log2(dim), SERVER);
 	}
 
 	//set client input
 	Cshr = (share**) malloc(sizeof(share*) * dim);
 	tempsum = 0;
 	for (j = 0; j < dim; j++) {
-		temp = query[j];
-		Cshr[j] = distcirc->PutINGate(2*temp, bitlen+1, CLIENT);
-		tempsum += (temp * temp);
+		//temp = query[j];
+		Cshr[j] = distcirc->PutINGate((uint32_t) 0, bitlen+1, CLIENT);
+		//tempsum += (temp * temp);
 	}
-	Csqr = mincirc->PutINGate(tempsum, 2*bitlen+ceil_log2(dim), CLIENT);
+	Csqr = mincirc->PutINGate((uint32_t) 0, 2*bitlen+ceil_log2(dim), CLIENT);
 
 	mindst = build_argmin_euclidean_dist_circuit(Sshr, Cshr, N, dim, Ssqr, Csqr, distcirc, (BooleanCircuit*) mincirc, sharings, S_BOOL);
 
@@ -107,12 +168,15 @@ int32_t argmin(uint32_t* query) {
 	party->ExecCircuit();
 
     int32_t result = mindst->get_clear_value<uint64_t>();
+    printf("  Client served.\n");
     
 	//TODO free
 	for(uint32_t i = 0; i < N; i++) {
+		free(serverdb[i]);
 		free(Sshr[i]);
 	}
 
+	free(serverdb);
 	free(Sshr);
 	free(Ssqr);
 
@@ -121,7 +185,7 @@ int32_t argmin(uint32_t* query) {
     return result;
 }
 
-//Build_
+//Build circuit
 share* build_argmin_euclidean_dist_circuit(share*** S, share** C, uint32_t n, uint32_t d, share** Ssqr, share* Csqr,
 		Circuit* distcirc, BooleanCircuit* mincirc, vector<Sharing*>& sharings, e_sharing minsharing) {
 	share **distance, **indices, *temp, *argmindist;
@@ -155,4 +219,34 @@ share* build_argmin_euclidean_dist_circuit(share*** S, share** C, uint32_t n, ui
 	free(distance);
 	return argmindist;
     //return S[0][0];
+}
+
+static int callback(void *NotUsed, int argc, char **argv, char **azColName){
+    int i;
+    uint32_t** data;
+    
+    for(i=0; i<argc; i++){
+      printf("%s = %s\n", azColName[i], argv[i] ? argv[i] : "NULL");
+    }
+    return 0;
+  }
+
+void query_db() {
+    printf("connecting to database\n");
+    sqlite3 *database;
+    char *zErrMsg;
+    string query = "select * from facedata;";
+    int rc = sqlite3_open("/tmp/test.db", &database);
+    if (rc) {
+        fprintf(stderr, "Can't open database.\n");
+        sqlite3_close(database);
+        return;
+    }
+    rc = sqlite3_exec(database, query.c_str(), callback, 0, &zErrMsg);
+    if (rc!=SQLITE_OK) {
+        fprintf(stderr, "SQL error :( %s\n", zErrMsg);
+        sqlite3_free(zErrMsg);
+    }
+    sqlite3_close(database);
+    printf("connected to database!\n");
 }
