@@ -19,8 +19,8 @@
 
 uint32_t* get_db_size() {
     uint32_t* db_size = (uint32_t*) malloc(2 * sizeof(uint32_t));
-    db_size[0] = 50;
-    db_size[1] = 3;
+    db_size[0] = 500;
+    db_size[1] = 128;
     return db_size;
 }
 
@@ -38,17 +38,18 @@ int32_t argmin(uint32_t* query) {
 	sharings[S_BOOL]->SetPreCompPhaseValue(precomp_phase_value);
 
 	crypto* crypt = new crypto(seclvl.symbits, (uint8_t*) const_seed);
-	uint32_t **serverdb, *clientquery;
 	uint64_t verify;
 
 	Circuit *distcirc, *mincirc;
 	
 	share ***Sshr, **Cshr, **Ssqr, *Csqr, *mindst;
 
+    distcirc = sharings[S_ARITH]->GetCircuitBuildRoutine();
+    mincirc = sharings[S_BOOL]->GetCircuitBuildRoutine();
 	//set server input
     uint32_t* dbsize = get_db_size();
     uint32_t N=dbsize[0], dim=dbsize[1];
-    free(dbsize);
+    //free(dbsize);
 	Sshr = (share***) malloc(sizeof(share**) * N);
 	for (i = 0; i < N; i++) {
 		Sshr[i] = (share**) malloc(sizeof(share*) * dim);
@@ -82,129 +83,15 @@ int32_t argmin(uint32_t* query) {
     
 	//TODO free
 	for(uint32_t i = 0; i < N; i++) {
-		free(serverdb[i]);
 		free(Sshr[i]);
 	}
 
-	free(serverdb);
 	free(Sshr);
 	free(Ssqr);
 
-	free(clientquery);
 	free(Cshr);
 
     return result;
-}
-
-int32_t test_argmin_eucliden_dist_circuit(e_role role, char* address, seclvl seclvl, uint32_t dbsize,
-		uint32_t dim, uint32_t nthreads, e_mt_gen_alg mt_alg, e_sharing dstsharing, e_sharing minsharing, ePreCompPhase pre_comp_value) {
-	uint32_t bitlen = 8, i, j, temp, tempsum, maxbitlen=32;
-	uint64_t output;
-	ABYParty* party = new ABYParty(role, address, seclvl, maxbitlen, nthreads, mt_alg);
-	vector<Sharing*>& sharings = party->GetSharings();
-
-	/**
-		Setting the precomputation value being passed as the precomputation mode of operation.
-		Currently precomputation phases only active for GMW based implementations.
-	*/
-	sharings[S_BOOL]->SetPreCompPhaseValue(pre_comp_value);
-
-
-	crypto* crypt = new crypto(seclvl.symbits, (uint8_t*) const_seed);
-	uint32_t **serverdb, *clientquery;
-	uint64_t verify;
-
-	Circuit *distcirc, *mincirc;
-	
-	share ***Sshr, **Cshr, **Ssqr, *Csqr, *mindst;
-	
-	srand(time(NULL));
-
-	//generate dbsize * dim * bitlen random bits as server db
-	serverdb = (uint32_t**) malloc(sizeof(uint32_t*) * dbsize);
-	for(i = 0; i < dbsize; i++) {
-		serverdb[i] = (uint32_t*) malloc(sizeof(uint32_t) * dim);
-		for(j = 0; j < dim; j++) {
-			serverdb[i][j] = rand() % ((uint64_t) 1 << bitlen);
-		}
-	}
-	//generate dim * bitlen random bits as client query
-	clientquery = (uint32_t*) malloc(sizeof(uint32_t) * dim);
-	for(j = 0; j < dim; j++) {
-		clientquery[j] = rand() % ((uint64_t) 1 << bitlen);
-	}
-
-	distcirc = sharings[dstsharing]->GetCircuitBuildRoutine();
-	mincirc = sharings[minsharing]->GetCircuitBuildRoutine();
-
-	//set server input
-	Sshr = (share***) malloc(sizeof(share**) * dbsize);
-	for (i = 0; i < dbsize; i++) {
-		Sshr[i] = (share**) malloc(sizeof(share*) * dim);
-		for (j = 0; j < dim; j++) {
-			Sshr[i][j] = distcirc->PutINGate(serverdb[i][j], bitlen, SERVER);
-		}
-	}
-
-	Ssqr = (share**) malloc(sizeof(share*) * dbsize);
-	for (i = 0; i < dbsize; i++) {
-		tempsum = 0; 
-		for (j = 0; j < dim; j++) {
-			temp = serverdb[i][j];
-			tempsum += (temp * temp);
-		}
-		Ssqr[i] = mincirc->PutINGate(tempsum, 2*bitlen+ceil_log2(dim), SERVER);
-	}
-
-	//set client input
-	Cshr = (share**) malloc(sizeof(share*) * dim);
-	tempsum = 0;
-	for (j = 0; j < dim; j++) {
-		temp = clientquery[j];
-		Cshr[j] = distcirc->PutINGate(2*temp, bitlen+1, CLIENT);
-		tempsum += (temp * temp);
-	}
-	Csqr = mincirc->PutINGate(tempsum, 2*bitlen+ceil_log2(dim), CLIENT);
-
-
-	mindst = build_argmin_euclidean_dist_circuit(Sshr, Cshr, dbsize, dim, Ssqr, Csqr, distcirc, (BooleanCircuit*) mincirc, sharings, minsharing);
-
-	mindst = mincirc->PutOUTGate(mindst, ALL);
-
-	party->ExecCircuit();
-	/**
-		Condition check added because in Precomputation store mode. Online phase is skipped therefore,
-		potentially calling getclearvalue is not possible.
-	*/
-	if(pre_comp_value != ePreCompStore) {
-		output = mindst->get_clear_value<uint64_t>();
-
-		CBitVector out;
-		//out.AttachBuf(output, (uint64_t) AES_BYTES * nvals);
-
-		cout << "Testing min Euclidean distance in " << get_sharing_name(dstsharing) << " and " <<
-			get_sharing_name(minsharing) << " sharing: " << endl;
-
-		cout << "Circuit result = " << output << endl;
-		verify = verify_argmin_euclidean_dist(serverdb, clientquery, dbsize, dim);
-		cout << "Verification result = " << verify << endl;
-	}
-	//PrintTimings();
-
-	//TODO free
-	for(uint32_t i = 0; i < dbsize; i++) {
-		free(serverdb[i]);
-		free(Sshr[i]);
-	}
-
-	free(serverdb);
-	free(Sshr);
-	free(Ssqr);
-
-	free(clientquery);
-	free(Cshr);
-
-	return 0;
 }
 
 //Build_
@@ -240,24 +127,5 @@ share* build_argmin_euclidean_dist_circuit(share*** S, share** C, uint32_t n, ui
 	argmindist = mincirc->PutArgminGate(distance, indices, n);
 	free(distance);
 	return argmindist;
-}
-
-uint64_t verify_argmin_euclidean_dist(uint32_t** serverdb, uint32_t* clientquery, uint32_t dbsize, uint32_t dim) {
-	uint32_t i, j;
-	uint64_t mindist, tmpdist;
-
-	mindist = MAX_UINT;
-	for(i=0; i < dbsize; i++) {
-		tmpdist = 0;
-		for(j=0; j < dim; j++) {
-			if(serverdb[i][j] > clientquery[j])
-				tmpdist += pow((serverdb[i][j] - clientquery[j]), 2);
-			else
-				tmpdist += pow((clientquery[j] - serverdb[i][j]), 2);
-		}
-		if(tmpdist < mindist)
-			mindist = tmpdist;
-	}
-
-	return mindist;
+    //return S[0][0];
 }

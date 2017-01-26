@@ -10,8 +10,6 @@
 #include "argmin_python_client.h"
 #include <stdint.h>
 
-#define PY_ARRAY_UNIQUE_SYMBOL ABY_PyArray_API
-
 static char module_docstring[] =
     "Interface to compute argmin with ABY";
 static char argmin_docstring[] = 
@@ -34,6 +32,7 @@ PyMODINIT_FUNC init_ABY(void) {
 
 static PyObject *ABY_argmin(PyObject *self, PyObject *args) {
     PyObject *query_obj;
+    printf("Setup python magic...\n");
     // Parse input tuple args
     if (!PyArg_ParseTuple(args, "O", &query_obj)) return NULL;
 
@@ -48,6 +47,7 @@ static PyObject *ABY_argmin(PyObject *self, PyObject *args) {
     int D = (int) PyArray_DIM(query_array, 0);
     uint32_t* query = (uint32_t*) PyArray_DATA(query_array);
 
+    uint32_t nneigh = argmin(query);
     uint32_t* db_size = get_db_size();
 
     if (db_size[1] != D) {
@@ -56,11 +56,10 @@ static PyObject *ABY_argmin(PyObject *self, PyObject *args) {
         return NULL;
     }
 
-    uint32_t nneigh = argmin(query);
     Py_DECREF(query_array);
 
-    //free(query);
-    //free(db_size);
+    free(query);
+    free(db_size);
 
     // Output value
     PyObject *ret = Py_BuildValue("I", nneigh);
