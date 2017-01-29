@@ -18,6 +18,8 @@
 #include "argmin_python_client.h"
 #include <sqlite3.h>
 
+#define DEBUG
+
 const string DATABASE_PATH = "/tmp/test.db";
 const string GET_SIZE_QUERY = "select count(id) from facedata;";
 
@@ -58,8 +60,14 @@ int32_t argmin(uint32_t* query) {
 
     seclvl seclvl = get_sec_lvl(secparam);
 
+#ifdef DEBUG
+    printf("Initiallizing party (client)\n");
+#endif
 	ABYParty* party = new ABYParty(CLIENT, (char*) address.c_str(), seclvl, maxbitlen, nthreads, mt_alg);
 	vector<Sharing*>& sharings = party->GetSharings();
+#ifdef DEBUG
+    printf("party initialized (client)\n");
+#endif
     uint32_t int_precomp = 0;
 	ePreCompPhase precomp_phase_value = (ePreCompPhase) int_precomp;
 	sharings[S_BOOL]->SetPreCompPhaseValue(precomp_phase_value);

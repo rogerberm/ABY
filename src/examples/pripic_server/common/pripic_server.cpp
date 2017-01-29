@@ -18,9 +18,11 @@
 #include "pripic_server.h"
 #include <sqlite3.h>
 
+#define DEBUG
+
 const string DATABASE_PATH = "/tmp/test.db";
-const string GET_SIZE_QUERY = "select count(id) from facedata;";
-const string GET_TABLE_QUERY = "select * from facedata;";
+const string GET_SIZE_QUERY = "select count(id) from user;";
+const string GET_TABLE_QUERY = "select face_representation from user;";
 
 uint32_t* get_db_size() {
     uint32_t* db_size = (uint32_t*) malloc(2 * sizeof(uint32_t));
@@ -30,12 +32,18 @@ uint32_t* get_db_size() {
 
     sqlite3 *database;
     sqlite3_stmt *statement;
+#ifdef DEBUG
+    printf("Opening database %s\n", DATABASE_PATH.c_str());
+#endif
     int rc = sqlite3_open(DATABASE_PATH.c_str(), &database);
     if (rc) {
         fprintf(stderr, "Can't open database.\n");
         sqlite3_free(database);
         return NULL;
     }
+#ifdef DEBUG
+    printf("Opening database %s\n", DATABASE_PATH.c_str());
+#endif
     rc = sqlite3_prepare_v2(database, GET_SIZE_QUERY.c_str(), -1, &statement, 0);
     if (rc != SQLITE_OK) {
         fprintf(stderr, "Couldn't fetch data\n");
@@ -75,12 +83,20 @@ uint32_t** get_table() {
     uint32_t** serverdb = (uint32_t**) malloc(sizeof(uint32_t*) * N);
     rc = sqlite3_step(statement);
     int i=0;
+    const unsigned char* select_result;
+    char temp=0;
+    char buffer[9];
+    buffer[8] = 0;
 
     while (rc == SQLITE_ROW) {
+        select_result = sqlite3_column_text(statement, 0);
+        printf("%s\n", select_result);
         serverdb[i] = (uint32_t*) malloc(sizeof(uint32_t) * dim);
         for(int j = 0; j < dim; j++) {
-            serverdb[i][j] = sqlite3_column_int(statement, j+1);
-            //serverdb[i][j] = rand() % ((uint64_t) 1 << bitlen);
+            memcpy(buffer, &select_result[8*j], 8*sizeof(char));
+            printf("%s\n",buffer);
+            sscanf(buffer,"%08lX",&serverdb[i][j]);
+            printf("read %d\n", serverdb[i][j]);
         }
         i++;
         rc = sqlite3_step(statement);
